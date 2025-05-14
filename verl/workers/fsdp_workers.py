@@ -107,11 +107,11 @@ class ActorRolloutRefWorker(Worker):
         self.ulysses_sharding_manager = FSDPUlyssesShardingManager(self.ulysses_device_mesh)
 
         self.role = role
-        assert self.role in ["actor", "rollout", "ref", "actor_rollout", "actor_rollout_ref"]
+        assert self.role in ["actor", "rollout", "ref", "actor_rollout", "actor_rollout_ref", "nora"]
 
-        self._is_actor = self.role in ["actor", "actor_rollout", "actor_rollout_ref"]
+        self._is_actor = self.role in ["actor", "actor_rollout", "actor_rollout_ref", "nora"]
         self._is_rollout = self.role in ["rollout", "actor_rollout", "actor_rollout_ref"]
-        self._is_ref = self.role in ["ref", "actor_rollout_ref"]
+        self._is_ref = self.role in ["ref", "actor_rollout_ref", "nora"]
 
         self._is_offload_param = False
         self._is_offload_optimizer = False

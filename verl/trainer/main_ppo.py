@@ -156,6 +156,10 @@ class TaskRunner:
             role_worker_mapping[Role.RefPolicy] = ray.remote(ActorRolloutRefWorker)
             mapping[Role.RefPolicy] = global_pool_id
 
+        if config.trainer.algo_mode == "dora":
+            role_worker_mapping[Role.Nora] = ray.remote(ActorRolloutRefWorker)
+            mapping[Role.Nora] = global_pool_id
+
         reward_fn = load_reward_manager(config, tokenizer, num_examine=0, **config.reward_model.get("reward_kwargs", {}))
         val_reward_fn = load_reward_manager(config, tokenizer, num_examine=1)
         resource_pool_manager = ResourcePoolManager(resource_pool_spec=resource_pool_spec, mapping=mapping)

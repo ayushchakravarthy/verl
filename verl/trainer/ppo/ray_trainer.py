@@ -52,7 +52,7 @@ from verl.single_controller.base import Worker
 from verl.single_controller.ray import RayClassWithInitArgs, RayResourcePool, RayWorkerGroup
 from verl.single_controller.ray.base import create_colocated_worker_cls
 from verl.trainer.ppo import core_algos
-from verl.trainer.ppo.core_algos import agg_loss
+from verl.trainer.ppo.core_algos import agg_loss, compute_oracle_psi
 from verl.trainer.ppo.metric_utils import (
     compute_data_metrics,
     compute_throughout_metrics,
@@ -85,6 +85,7 @@ class Role(Enum):
     RefPolicy = 4
     RewardModel = 5
     ActorRolloutRef = 6
+    Nora = 7
 
 
 class AdvantageEstimator(str, Enum):
@@ -340,6 +341,7 @@ class RayPPOTrainer:
         self.role_worker_mapping = role_worker_mapping
         self.resource_pool_manager = resource_pool_manager
         self.use_reference_policy = Role.RefPolicy in role_worker_mapping
+        self.use_nora = Role.Nora in role_worker_mapping
         self.use_rm = Role.RewardModel in role_worker_mapping
         self.ray_worker_group_cls = ray_worker_group_cls
         self.validation_generations_logger = ValidationGenerationsLogger()
@@ -358,10 +360,10 @@ class RayPPOTrainer:
             self.use_critic = False
         else:
             raise NotImplementedError
-
+        
         self._validate_config()
         self._create_dataloader(train_dataset, val_dataset, collate_fn, train_sampler)
-
+    
     def _validate_config(self):
         config = self.config
         # number of GPUs total
@@ -820,6 +822,11 @@ class RayPPOTrainer:
             resource_pool = self.resource_pool_manager.get_resource_pool(Role.RefPolicy)
             ref_policy_cls = RayClassWithInitArgs(self.role_worker_mapping[Role.RefPolicy], config=self.config.actor_rollout_ref, role="ref")
             self.resource_pool_to_cls[resource_pool]["ref"] = ref_policy_cls
+        
+        if self.use_nora:
+            resource_pool = self.resource_pool_manager.get_resource_pool(Role.Nora)
+            nora_cls = RayClassWithInitArgs(self.role_worker_mapping[Role.Nora], config=self.config.actor_rollout_ref, role="nora")
+            self.resource_pool_to_cls[resource_pool]["nora"] = nora_cls
 
         # create a reward model if reward_fn is None
         if self.use_rm:
@@ -851,6 +858,10 @@ class RayPPOTrainer:
         if self.use_reference_policy:
             self.ref_policy_wg = all_wg["ref"]
             self.ref_policy_wg.init_model()
+        
+        if self.use_nora:
+            self.nora_wg = all_wg["nora"]
+            self.nora_wg.init_model()
 
         if self.use_rm:
             self.rm_wg = all_wg["rm"]
@@ -1141,6 +1152,19 @@ class RayPPOTrainer:
                             norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
                             multi_turn=self.config.actor_rollout_ref.rollout.multi_turn.enable,
                         )
+                    
+                    if self.config.trainer.algo_mode == "dora":
+                        with _timer("psi", timing_raw):
+                            # compute and populate batch with psi
+                            batch.batch['psi'] = compute_oracle_psi(
+                                ref_log_probs=batch.batch["ref_log_prob"],
+                                advantages=batch.batch["advantages"],
+                                tau=self.config.dora.tau,
+                                beta=self.config.dora.beta,
+                            )
+                        with _timer("nora_log_prob", timing_raw):
+                            nora_log_prob = self.nora_wg.compute_log_prob(batch)
+                            batch = batch.union(nora_log_prob)
 
                     # update critic
                     if self.use_critic:

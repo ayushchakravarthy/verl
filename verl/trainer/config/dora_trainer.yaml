@@ -1,0 +1,19 @@
+hydra:
+  searchpath:
+    - file://verl/trainer/config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+trainer:
+  algo_mode: dora
+  dora:
+    objective: "2.4"
+    delta: 6.0
+    tau: 1.0
+    beta: 1.0
+
+algorithm:
+  gamma: 0.99
+  lam: 0.95

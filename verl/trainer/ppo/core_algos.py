@@ -473,6 +473,45 @@ def compute_policy_loss(
     return pg_loss, pg_clipfrac, ppo_kl, pg_clipfrac_lower
 
 
+def compute_dora_loss(
+    dora_logprob: torch.Tensor,
+    nora_logprob: torch.Tensor,
+    ref_logprob: torch.Tensor,
+    psi: torch.Tensor,
+    response_mask: torch.Tensor,
+    delta: float = 6.0,
+    mode: str = "2.4",
+):
+    if mode not in ("2.2", "2.4"):
+        raise ValueError(f"mode must be '2.2' or '2.4', got {mode}")
+
+    if mode == "2.2":
+        log_ratio = dora_logprob - nora_logprob
+    else:
+        with torch.no_grad():
+            log_ratio = ref_logprob - nora_logprob
+
+    clipped = torch.clamp(log_ratio, min=-delta)
+    clipped = torch.minimum(clipped, psi)
+
+    obj_per_token = -clipped
+    loss = verl_F.masked_mean(obj_per_token, response_mask)
+
+    stats = {
+        "dora_objective": -loss.detach(),
+        "clip_frac_low":  verl_F.masked_mean(
+            (log_ratio < -delta).float(), response_mask
+        ),
+        "clip_frac_high": verl_F.masked_mean(
+            (log_ratio > psi).float(), response_mask
+        ),
+        "mean_log_ratio": verl_F.masked_mean(log_ratio, response_mask),
+        "mean_psi": verl_F.masked_mean(psi, response_mask),
+    }
+    return loss, stats
+
+    
+
 def compute_entropy_loss(logits, response_mask):
     """Compute Categorical entropy loss
 
@@ -551,3 +590,12 @@ def kl_penalty(logprob: torch.FloatTensor, ref_logprob: torch.FloatTensor, kl_pe
         raise NotImplementedError
 
     raise NotImplementedError
+
+def compute_oracle_psi(
+    ref_log_probs: torch.Tensor,
+    advantages: torch.Tensor,
+    tau: float = 0.01,
+    beta: float = 1.0,
+) -> torch.Tensor:
+    log_psi = -torch.log(beta) + ref_log_probs + tau * advantages
+    return torch.exp(log_psi)
