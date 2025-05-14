@@ -491,8 +491,7 @@ def compute_dora_loss(
         with torch.no_grad():
             log_ratio = ref_logprob - nora_logprob
 
-    clipped = torch.clamp(log_ratio, min=-delta)
-    clipped = torch.minimum(clipped, psi)
+    clipped = torch.clamp(log_ratio, min=-delta, max=psi)
 
     obj_per_token = -clipped
     loss = verl_F.masked_mean(obj_per_token, response_mask)
