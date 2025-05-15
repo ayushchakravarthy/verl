@@ -1163,7 +1163,7 @@ class RayPPOTrainer:
                                 beta=self.config.dora.beta,
                             )
                         with _timer("nora_log_prob", timing_raw):
-                            nora_log_prob = self.nora_wg.compute_log_prob(batch)
+                            nora_log_prob = self.nora_wg.compute_ref_log_prob(batch)
                             batch = batch.union(nora_log_prob)
 
                     # update critic
