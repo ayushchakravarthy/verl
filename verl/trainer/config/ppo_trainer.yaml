@@ -7,6 +7,7 @@ data:
   max_prompt_length: 512
   max_response_length: 512
   max_extrapolation_length: 1024
+  extrapolation_val: False
   train_batch_size: 1024
   val_batch_size: null
   return_raw_input_ids: False  # This should be set to true when the tokenizer between policy and rm differs
@@ -56,6 +57,12 @@ actor_rollout_ref:
     ppo_epochs: 1
     shuffle: False
     ulysses_sequence_parallel_size: 1 # sp size
+    algo_mode: "dora"
+    dora:
+      mode: "2.4"
+      delta: 2.0
+      tau: 1.0
+      beta: 1.0
     checkpoint:
       contents: ['model', 'optimizer', 'extra']  # with 'hf_model' you can save whole model as hf format, now only use sharded model checkpoint to save space
     optim:
@@ -89,6 +96,9 @@ actor_rollout_ref:
     log_prob_use_dynamic_bsz: ${actor_rollout_ref.actor.use_dynamic_bsz}
     log_prob_max_token_len_per_gpu: ${actor_rollout_ref.actor.ppo_max_token_len_per_gpu}
     ulysses_sequence_parallel_size: ${actor_rollout_ref.actor.ulysses_sequence_parallel_size} # sp size
+  nora:
+    model:
+      path: /scr-ssd/akchak/exploration_rl/ppo/grpo_deepscaler_deepseek-ai_DeepSeek-R1-Distill-Qwen-1.5B/global_step_200/hf
   rollout:
     name: vllm
     mode: sync # sync: LLM, async: AsyncLLM
@@ -100,6 +110,7 @@ actor_rollout_ref:
     prompt_length: ${data.max_prompt_length}  # not use for opensource
     response_length: ${data.max_response_length}
     extrapolation_length: ${data.max_extrapolation_length}
+    extrapolation_val: ${data.extrapolation_val}
     # for vllm rollout
     dtype: bfloat16 # should align with FSDP
     gpu_memory_utilization: 0.5
@@ -220,6 +231,12 @@ algorithm:
     kl_coef: 0.001
     horizon: 10000
     target_kl: 0.1
+  algo_mode: dora
+  dora:
+    objective: "2.4"
+    delta: 2.0
+    tau: 1.0
+    beta: 1.0
 
 trainer:
   balance_batch: True
@@ -246,6 +263,7 @@ trainer:
   max_critic_ckpt_to_keep: null
   # The timeout for ray worker group to wait for the register center to be ready
   ray_wait_register_center_timeout: 300
+  extrapolation_val: False
 
 ray_init:
   num_cpus: null # `None` means using all CPUs, which might cause hang if limited in systems like SLURM. Please set to a number allowed then.

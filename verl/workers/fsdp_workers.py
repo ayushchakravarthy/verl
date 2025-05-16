@@ -673,7 +673,8 @@ class ActorRolloutRefWorker(Worker):
         with self.ulysses_sharding_manager:
             data = self.ulysses_sharding_manager.preprocess_data(data)
             output, _ = self.ref_policy.compute_log_prob(data=data, calculate_entropy=False)
-            output = DataProto.from_dict(tensors={"ref_log_prob": output})
+            name = "ref_log_prob" if self.role != "nora" else "nora_log_prob"
+            output = DataProto.from_dict(tensors={name: output})
             output = self.ulysses_sharding_manager.postprocess_data(output)
 
         output = output.to("cpu")

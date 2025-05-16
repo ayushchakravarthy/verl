@@ -1007,9 +1007,10 @@ class RayPPOTrainer:
             assert val_metrics, f"{val_metrics=}"
             pprint(f"Initial validation metrics: {val_metrics}")
             logger.log(data=val_metrics, step=self.global_steps)
-            extrapolation_val_metrics = self._validate(extrapolate=True)
-            pprint(f'Initial extrapolation validation metrics: {extrapolation_val_metrics}')
-            logger.log(data=extrapolation_val_metrics, step=self.global_steps)
+            if self.config.trainer.get('extrapolation_val', False):
+                extrapolation_val_metrics = self._validate(extrapolate=True)
+                pprint(f'Initial extrapolation validation metrics: {extrapolation_val_metrics}')
+                logger.log(data=extrapolation_val_metrics, step=self.global_steps)
             
             
             if self.config.trainer.get('val_only', False):
@@ -1153,14 +1154,14 @@ class RayPPOTrainer:
                             multi_turn=self.config.actor_rollout_ref.rollout.multi_turn.enable,
                         )
                     
-                    if self.config.trainer.algo_mode == "dora":
+                    if self.config.algorithm.algo_mode == "dora":
                         with _timer("psi", timing_raw):
                             # compute and populate batch with psi
                             batch.batch['psi'] = compute_oracle_psi(
                                 ref_log_probs=batch.batch["ref_log_prob"],
                                 advantages=batch.batch["advantages"],
-                                tau=self.config.dora.tau,
-                                beta=self.config.dora.beta,
+                                tau=self.config.algorithm.dora.tau,
+                                beta=self.config.algorithm.dora.beta,
                             )
                         with _timer("nora_log_prob", timing_raw):
                             nora_log_prob = self.nora_wg.compute_ref_log_prob(batch)
@@ -1202,12 +1203,14 @@ class RayPPOTrainer:
                     if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0):
                         with _timer("testing", timing_raw):
                             val_metrics: dict = self._validate()
-                            extrapolation_val_metrics: dict = self._validate(extrapolate=True)
                             if is_last_step:
                                 last_val_metrics = val_metrics
-                                last_extrapolation_val_metrics = extrapolation_val_metrics
+                            if self.config.trainer.get('extrapolation_val', False):
+                                extrapolation_val_metrics: dict = self._validate(extrapolate=True)
+                                if is_last_step:
+                                    last_extrapolation_val_metrics = extrapolation_val_metrics
+                                metrics.update(extrapolation_val_metrics)
                         metrics.update(val_metrics)
-                        metrics.update(extrapolation_val_metrics)
 
                     if self.config.trainer.save_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.save_freq == 0):
                         with _timer("save_checkpoint", timing_raw):

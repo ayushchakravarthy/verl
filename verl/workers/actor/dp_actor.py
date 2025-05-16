@@ -252,6 +252,9 @@ class DataParallelPPOActor(BasePPOActor):
             select_keys.append("loss_mask")
         if self.config.use_kl_loss:
             select_keys.append("ref_log_prob")
+        if self.config.algo_mode == "dora":
+            select_keys.append("nora_log_prob")
+            select_keys.append('psi')
         batch = data.select(batch_keys=select_keys).batch
         has_multi_modal_inputs = "multi_modal_inputs" in data.non_tensor_batch.keys()
 
@@ -323,7 +326,7 @@ class DataParallelPPOActor(BasePPOActor):
                         metrics['actor/frac_trained_on'] = (response_mask.shape[0] - (response_mask.sum(dim=-1) == 0.).sum().item()) / response_mask.shape[0]
 
 
-                    if self.config.trainer.algo_mode != "dora":
+                    if self.config.algo_mode != "dora":
                         pg_loss, pg_clipfrac, ppo_kl, pg_clipfrac_lower = compute_policy_loss(
                             old_log_prob=old_log_prob,
                             log_prob=log_prob,
@@ -335,7 +338,7 @@ class DataParallelPPOActor(BasePPOActor):
                             clip_ratio_c=clip_ratio_c,
                             loss_agg_mode=loss_agg_mode,
                         )
-                        data = {
+                        log_data = {
                             "actor/pg_loss": pg_loss.detach().item(),
                             "actor/pg_clipfrac": pg_clipfrac.detach().item(),
                             "actor/ppo_kl": ppo_kl.detach().item(),
@@ -351,7 +354,7 @@ class DataParallelPPOActor(BasePPOActor):
                             delta=self.config.dora.delta,
                             mode=self.config.dora.mode,
                         )
-                        data = dora_stats
+                        log_data = dora_stats
 
                     if entropy_coeff != 0:
                         entropy_loss = agg_loss(loss_mat=entropy, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
@@ -378,10 +381,10 @@ class DataParallelPPOActor(BasePPOActor):
                         loss = policy_loss / self.gradient_accumulation
                     loss.backward()
 
-                    append_to_dict(metrics, data)
+                    append_to_dict(metrics, log_data)
 
                 grad_norm = self._optimizer_step()
-                data = {"actor/grad_norm": grad_norm.detach().item()}
-            append_to_dict(metrics, data)
+                log_data = {"actor/grad_norm": grad_norm.detach().item()}
+            append_to_dict(metrics, log_data)
         self.actor_optimizer.zero_grad()
         return metrics

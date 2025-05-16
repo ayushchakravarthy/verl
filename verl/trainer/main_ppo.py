@@ -97,6 +97,7 @@ class TaskRunner:
 
         trust_remote_code = config.data.get("trust_remote_code", False)
         tokenizer = hf_tokenizer(local_path, trust_remote_code=trust_remote_code)
+        tokenizer.model_max_length = 131072
         processor = hf_processor(local_path, use_fast=True)  # used for multimodal LLM, could be none
 
         # define worker classes
@@ -156,7 +157,7 @@ class TaskRunner:
             role_worker_mapping[Role.RefPolicy] = ray.remote(ActorRolloutRefWorker)
             mapping[Role.RefPolicy] = global_pool_id
 
-        if config.trainer.algo_mode == "dora":
+        if config.algorithm.algo_mode == "dora":
             role_worker_mapping[Role.Nora] = ray.remote(ActorRolloutRefWorker)
             mapping[Role.Nora] = global_pool_id
 

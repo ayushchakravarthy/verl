@@ -22,6 +22,7 @@ from collections import defaultdict
 
 import numpy as np
 import torch
+import math
 
 import verl.utils.torch_functional as verl_F
 
@@ -491,21 +492,21 @@ def compute_dora_loss(
         with torch.no_grad():
             log_ratio = ref_logprob - nora_logprob
 
-    clipped = torch.clamp(log_ratio, min=-delta, max=psi)
+    clipped = torch.clamp(log_ratio, min=-delta * torch.ones_like(log_ratio, device=log_ratio.device), max=psi)
 
     obj_per_token = -clipped
     loss = verl_F.masked_mean(obj_per_token, response_mask)
 
     stats = {
-        "dora_objective": -loss.detach(),
-        "clip_frac_low":  verl_F.masked_mean(
+        "actor/dora_loss": -loss.detach().item(),
+        "actor/clip_frac_low":  verl_F.masked_mean(
             (log_ratio < -delta).float(), response_mask
-        ),
-        "clip_frac_high": verl_F.masked_mean(
+        ).detach().item(),
+        "actor/clip_frac_high": verl_F.masked_mean(
             (log_ratio > psi).float(), response_mask
-        ),
-        "mean_log_ratio": verl_F.masked_mean(log_ratio, response_mask),
-        "mean_psi": verl_F.masked_mean(psi, response_mask),
+        ).detach().item(),
+        "actor/mean_log_ratio": verl_F.masked_mean(log_ratio, response_mask).detach().item(),
+        "actor/mean_psi": verl_F.masked_mean(psi, response_mask).detach().item(),
     }
     return loss, stats
 
@@ -596,5 +597,5 @@ def compute_oracle_psi(
     tau: float = 0.01,
     beta: float = 1.0,
 ) -> torch.Tensor:
-    log_psi = -torch.log(beta) + ref_log_probs + tau * advantages
+    log_psi = -math.log(beta) + ref_log_probs + tau * advantages
     return torch.exp(log_psi)
