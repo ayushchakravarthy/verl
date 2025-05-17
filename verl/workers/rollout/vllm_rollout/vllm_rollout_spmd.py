@@ -94,12 +94,12 @@ class vLLMRollout(BaseRollout):
         if kwargs.get("train_tp") is not None:
             # deployed with megatron
             import os
-
             os.environ["CUDA_TIMER_STREAM_KAFKA_ENABLE"] = "0"
             os.environ["MEGATRON_IMPORT_TIMERS"] = "0"
             if vllm_version in (
                 "0.5.4",
                 "0.6.3",
+                "0.7.0",
             ):
                 train_tp = kwargs.get("train_tp")
                 num_tp_per_train_tp = train_tp // tensor_parallel_size
