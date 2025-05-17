@@ -12,33 +12,29 @@ export HF_DATASETS_CACHE=$hf_cache_dir
 export HF_TOKEN='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'
 
 models=(
-    Qwen/Qwen3-1.7B-Base
-    Qwen/Qwen3-1.7B-Base
-    Qwen/Qwen3-1.7B-Base
-    Qwen/Qwen3-1.7B-Base
+    Qwen/Qwen3-1.7B
+    Qwen/Qwen3-1.7B
+    Qwen/Qwen3-1.7B
 )
 num_models=${#models[@]}
 names=(
-    aime-qwen3-17b-grpo-8k-aime-n16
-    aime-qwen3-17b-grpo-8k-omnimath-n16
-    aime-qwen3-17b-grpo-8k-dapo-n16
-    aime-qwen3-17b-grpo-8k-deepscaler-n16
+    qwen3-1.7b-nohint-noextrap-chatfix3k
+    qwen3-1.7b-nohint-noextrap-promptsuff-chatfix3k
+    qwen3-1.7b-hint-noextrap-mixfalse-easy3k
 )
 num_names=${#names[@]}
 
 train_data_dirs=(
-    "/home/anikait.singh/rl_behaviors_verl_stable/data_aime_math"
-    "/home/anikait.singh/rl_behaviors_verl_stable/data_omnimath"
-    "/home/anikait.singh/rl_behaviors_verl_stable/data_dapo_math"
-    "/home/anikait.singh/rl_behaviors_verl_stable/data_deepscaler_amrith_math"
+    '/home/anikait.singh/rl_behaviors_verl_stable/data_d1shs0ap-easy-verl'
+    "/home/anikait.singh/rl_behaviors_verl_stable/data_d1shs0ap-easy-verl-promptsuffix"
+    "/home/anikait.singh/rl_behaviors_verl_stable/data_d1shs0ap-easy-mixFalse-nochat"
 )
 num_train_data_dirs=${#train_data_dirs[@]}
 
 eval_data_dirs=(
-    "/home/anikait.singh/rl_behaviors_verl_stable/data_aime2025_math"
-    "/home/anikait.singh/rl_behaviors_verl_stable/data_aime2025_math"
-    "/home/anikait.singh/rl_behaviors_verl_stable/data_aime2025_math"
-    "/home/anikait.singh/rl_behaviors_verl_stable/data_aime2025_math"
+    '/home/anikait.singh/rl_behaviors_verl_stable/data_d1shs0ap-easy-verl'
+    "/home/anikait.singh/rl_behaviors_verl_stable/data_d1shs0ap-easy-verl-promptsuffix"
+    "/home/anikait.singh/rl_behaviors_verl_stable/data_d1shs0ap-easy-mixFalse-nochat"
 )
 num_eval_data_dirs=${#eval_data_dirs[@]}
 
@@ -46,11 +42,15 @@ gpus=(
     "0,1,2,3,4,5,6,7"
     "0,1,2,3,4,5,6,7"
     "0,1,2,3,4,5,6,7"
-    "0,1,2,3,4,5,6,7"
 )
 num_gpus=${#gpus[@]}
 
-PROJECT_NAME='verl_stable_grpo_qwen3_17b_n16_0501'
+project_names=(
+    grpo_qwen3_hintsolgen_d1shs0ap_easy_chatfix3k_0510
+    grpo_qwen3_hintsolgen_d1shs0ap_easy_chatfix3k_0510
+    grpo_qwen3_hintsolgen_d1shs0ap_easy_chatfix3k_0510
+)
+num_project_names=${#project_names[@]}
 
 
 if [ $num_models -ne $num_names ]; then
@@ -70,6 +70,11 @@ fi
 
 if [ $num_models -ne $num_eval_data_dirs ]; then
     echo "Number of models and eval data directories should be the same"
+    exit 1
+fi
+
+if [ $num_models -ne $num_project_names ]; then
+    echo "Number of models and project names should be the same"
     exit 1
 fi
 
@@ -101,14 +106,17 @@ for i in $(seq 0 $((num_models-1))); do
     export BASE_MODEL=${models[$i]}
     export TRAIN_DATA_DIR=$curr_train_data_dir
     export EVAL_DATA_DIR=$curr_eval_data_dir
-    export ROLLOUT_TP_SIZE=2
+    export ROLLOUT_TP_SIZE=1
     export EXPERIMENT_NAME=${names[$i]}
     # export VLLM_ATTENTION_BACKEND=XFORMERS
     export CUDA_VISIBLE_DEVICES=${gpus[$i]}
     export PROJECT_NAME=$PROJECT_NAME
     export MAX_MODEL_LEN=8192
-    export MAX_PROMPT_LENGTH=1024
-    export EPOCHS=30
+    export MAX_PROMPT_LENGTH=3072
+    # export MAX_PROMPT_LENGTH=1024
+    # export EPOCHS=30
+    export EPOCHS=2
+    export PROJECT_NAME=${project_names[$i]}
 
     command="bash /home/anikait.singh/verl-stable/scripts/grpo/grpo_run_dualclip.sh"
     echo "Using GPU: $CUDA_VISIBLE_DEVICES"

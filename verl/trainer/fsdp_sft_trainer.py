@@ -30,9 +30,6 @@ from contextlib import nullcontext
 import hydra
 import torch
 import torch.distributed
-from flash_attn.bert_padding import index_first_axis, pad_input, rearrange, unpad_input
-from peft import LoraConfig, TaskType, get_peft_model
-from tensordict import TensorDict
 from torch import nn, optim
 from torch.distributed.device_mesh import DeviceMesh, init_device_mesh
 from torch.distributed.fsdp import CPUOffload, MixedPrecision, ShardingStrategy
@@ -87,7 +84,11 @@ class FSDPSFTTrainer:
         self.device_mesh = device_mesh
         self.ulysses_device_mesh = ulysses_device_mesh
         self.sharding_manager = FSDPUlyssesShardingManager(self.ulysses_device_mesh)
-        self.tokenizer = tokenizer
+        # build tokenizer first
+        local_model_path = copy_to_local(src=self.config.model.partial_pretrain, verbose=True)
+        from verl.utils import hf_tokenizer
+        self.tokenizer = hf_tokenizer(local_model_path, trust_remote_code=self.config.model.trust_remote_code)
+        self.tokenizer.model_max_length = 131072
         if self.config.data.chat_template is not None:
             raise ValueError("Apply Chat template from config is not supported yet.")
 
@@ -498,10 +499,18 @@ class FSDPSFTTrainer:
             torch.distributed.barrier()
 
             # save checkpoint
-            self.save_checkpoint(step=global_step)
+            # self.save_checkpoint(step=global_step)
 
 
-@hydra.main(config_path="config", config_name="sft_trainer", version_base=None)
+from verl.trainer.fsdp_sft_trainer import FSDPSFTTrainer
+import hydra
+
+from torch.distributed.device_mesh import init_device_mesh
+
+from verl.utils.distributed import initialize_global_process_group
+
+
+@hydra.main(config_path='config', config_name='sft_trainer', version_base=None)
 def main(config):
     local_rank, rank, world_size = initialize_global_process_group()
 

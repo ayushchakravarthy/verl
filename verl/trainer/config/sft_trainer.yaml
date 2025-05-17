@@ -54,5 +54,5 @@ trainer:
   total_training_steps: null
   logger: ['console']
   seed: 1
-  validation_interval: 200
+  validation_interval: 100
 

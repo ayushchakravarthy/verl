@@ -600,7 +600,7 @@ class RayPPOTrainer:
         sample_scores = []
         sample_indices = []
         sample_splits = []
-
+        
         # difficulty
         difficulties = []
         lengths = []
@@ -682,7 +682,7 @@ class RayPPOTrainer:
 
             extra_info = test_batch.non_tensor_batch.get('extra_info')
             sample_indices.extend([x['index'] for x in extra_info])
-            sample_splits.extend(x['split'] for x in extra_info)
+            sample_splits.extend([x['split'] for x in extra_info])
             
             if 'level' in test_batch.non_tensor_batch:
                 difficulties.extend(list(test_batch.non_tensor_batch['level']))
@@ -704,10 +704,11 @@ class RayPPOTrainer:
             lengths.extend(map(lambda text: len(self.tokenizer.encode(text)), output_texts))
 
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
-
+        data_sources = np.concatenate(data_source_lst, axis=0)
+        
         # save rollouts
         rollouts = []
-        for input, output, score, ref_score, index, split in zip(sample_inputs, sample_outputs, sample_scores, difficulties, sample_indices, sample_splits):
+        for input, output, score, ref_score, index, split, source in zip(sample_inputs, sample_outputs, sample_scores, difficulties, sample_indices, sample_splits, data_sources):
             rollouts.append(
                 {
                     'input': input,
@@ -715,7 +716,8 @@ class RayPPOTrainer:
                     'score': score,
                     'ref_score': ref_score,
                     'index': index,
-                    'split': split
+                    'split': split,
+                    'source': source,
                 }
             )
 
@@ -731,7 +733,6 @@ class RayPPOTrainer:
             assert len(lst) == 0 or len(lst) == len(sample_scores), f"{key_info}: {len(lst)=}, {len(sample_scores)=}"
 
         reward_tensor = torch.cat(reward_tensor_lst, dim=0).sum(-1).cpu()  # (batch_size,)
-        data_sources = np.concatenate(data_source_lst, axis=0)
         # evaluate test_score based on data source
         data_source_reward = defaultdict(list)
         data_source_length = defaultdict(list)
@@ -771,12 +772,14 @@ class RayPPOTrainer:
         metric_dict = {}
         for data_source, rewards in data_source_reward.items():
             metric_dict[f"{'extrapolation_' if extrapolate else ''}val/reward/mean"] = np.mean(rewards)
+            metric_dict[f"{'extrapolation_' if extrapolate else ''}val/test_score/"] = np.mean(rewards)
             metric_dict[f"{'extrapolation_' if extrapolate else ''}val/length/mean"] = np.mean(data_source_length[data_source])
             metric_dict[f"{'extrapolation_' if extrapolate else ''}val/0_length/mean"] = np.mean(data_source_0_length[data_source]) if len(data_source_0_length[data_source]) > 0 else -1
             metric_dict[f"{'extrapolation_' if extrapolate else ''}val/1_length/mean"] = np.mean(data_source_1_length[data_source]) if len(data_source_1_length[data_source]) > 0 else -1            
             
             for difficulty, per_difficulty_rewards in data_source_reward_by_difficulty[data_source].items():
                 metric_dict[f"{'extrapolation_' if extrapolate else ''}val/reward/{difficulty}"] = np.mean(per_difficulty_rewards)
+                metric_dict[f"{'extrapolation_' if extrapolate else ''}val/test_score/{difficulty}"] = np.mean(per_difficulty_rewards)
             
             for difficulty, per_difficulty_lengths in data_source_length_by_difficulty[data_source].items():
                 metric_dict[f"{'extrapolation_' if extrapolate else ''}val/length/{difficulty}"] = np.mean(per_difficulty_lengths)
@@ -1007,11 +1010,12 @@ class RayPPOTrainer:
             assert val_metrics, f"{val_metrics=}"
             pprint(f"Initial validation metrics: {val_metrics}")
             logger.log(data=val_metrics, step=self.global_steps)
+
             if self.config.trainer.get('extrapolation_val', False):
                 extrapolation_val_metrics = self._validate(extrapolate=True)
                 pprint(f'Initial extrapolation validation metrics: {extrapolation_val_metrics}')
                 logger.log(data=extrapolation_val_metrics, step=self.global_steps)
-            
+                
             
             if self.config.trainer.get('val_only', False):
                 return
@@ -1205,15 +1209,17 @@ class RayPPOTrainer:
                             val_metrics: dict = self._validate()
                             if is_last_step:
                                 last_val_metrics = val_metrics
+                            metrics.update(val_metrics)
                             if self.config.trainer.get('extrapolation_val', False):
                                 extrapolation_val_metrics: dict = self._validate(extrapolate=True)
                                 if is_last_step:
                                     last_extrapolation_val_metrics = extrapolation_val_metrics
                                 metrics.update(extrapolation_val_metrics)
-                        metrics.update(val_metrics)
-
-                    if self.config.trainer.save_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.save_freq == 0):
-                        with _timer("save_checkpoint", timing_raw):
+                        
+                        
+                    if self.config.trainer.save_freq > 0 and ( is_last_step or \
+                            self.global_steps % self.config.trainer.save_freq == 0):
+                        with _timer('save_checkpoint', timing_raw):
                             self._save_checkpoint()
 
                 # training metrics
