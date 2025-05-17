@@ -253,6 +253,8 @@ class DataParallelPPOActor(BasePPOActor):
         if self.config.use_kl_loss:
             select_keys.append("ref_log_prob")
         if self.config.algo_mode == "dora":
+            if "ref_log_prob" not in select_keys:
+                select_keys.append("ref_log_prob")
             select_keys.append("nora_log_prob")
             select_keys.append('psi')
         batch = data.select(batch_keys=select_keys).batch
@@ -352,9 +354,15 @@ class DataParallelPPOActor(BasePPOActor):
                             psi=data["psi"],
                             response_mask=response_mask,
                             delta=self.config.dora.delta,
-                            mode=self.config.dora.mode,
                         )
                         log_data = dora_stats
+
+                        # compute and log kl between dora (actor) and nora
+                        nora_log_prob = data['nora_log_prob']
+                        kld = kl_penalty(logprob=log_prob.detach(), ref_logprob=nora_log_prob.detach(), kl_penalty=self.config.kl_loss_type)
+                        kl_loss = agg_loss(loss_mat=kld, loss_mask=response_mask, loss_agg_mode=self.config.loss_agg_mode)
+
+                        log_data['actor/kl_loss'] = kl_loss.detach().item()
 
                     if entropy_coeff != 0:
                         entropy_loss = agg_loss(loss_mat=entropy, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)

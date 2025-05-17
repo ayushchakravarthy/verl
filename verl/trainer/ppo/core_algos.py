@@ -481,18 +481,18 @@ def compute_dora_loss(
     psi: torch.Tensor,
     response_mask: torch.Tensor,
     delta: float = 6.0,
-    mode: str = "2.4",
 ):
-    if mode not in ("2.2", "2.4"):
-        raise ValueError(f"mode must be '2.2' or '2.4', got {mode}")
 
-    if mode == "2.2":
-        log_ratio = dora_logprob - nora_logprob
-    else:
-        with torch.no_grad():
-            log_ratio = ref_logprob - nora_logprob
+    with torch.no_grad():
+        log_ratio = ref_logprob - nora_logprob
 
-    clipped = torch.clamp(log_ratio, min=-delta * torch.ones_like(log_ratio, device=log_ratio.device), max=psi)
+    deltas = -delta * torch.ones_like(log_ratio, device=log_ratio.device)
+    zeros = torch.zeros_like(log_ratio, device=log_ratio.device)
+
+    clipped = torch.clamp(log_ratio, min=deltas, max=psi)
+
+    clipped = torch.where(clipped == deltas, zeros, clipped)
+    clipped = torch.where(clipped == psi, zeros, clipped)
 
     obj_per_token = -clipped
     loss = verl_F.masked_mean(obj_per_token, response_mask)

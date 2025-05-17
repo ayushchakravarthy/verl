@@ -84,7 +84,6 @@ actor_rollout_ref:
     ulysses_sequence_parallel_size: 1 # sp size
     algo_mode: "dora"
     dora:
-      mode: "2.4"
       delta: 2.0
       tau: 1.0
       beta: 1.0
@@ -258,7 +257,6 @@ algorithm:
     target_kl: 0.1
   algo_mode: ${actor_rollout_ref.actor.algo_mode}
   dora:
-    mode: ${actor_rollout_ref.actor.dora.mode}
     delta: ${actor_rollout_ref.actor.dora.delta}
     tau: ${actor_rollout_ref.actor.dora.tau}
     beta: ${actor_rollout_ref.actor.dora.beta}

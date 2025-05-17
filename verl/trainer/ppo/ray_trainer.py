@@ -1120,6 +1120,13 @@ class RayPPOTrainer:
                             ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
                             batch = batch.union(ref_log_prob)
 
+                    if self.config.algorithm.algo_mode == "dora":
+                        # compute nora ref log_prob
+                        with _timer("nora", timing_raw):
+                            nora_log_prob = self.nora_wg.compute_ref_log_prob(batch)
+                            batch = batch.union(nora_log_prob)
+                    
+
                     # compute values
                     if self.use_critic:
                         with _timer("values", timing_raw):

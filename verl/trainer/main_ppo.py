@@ -158,6 +158,11 @@ class TaskRunner:
             mapping[Role.RefPolicy] = global_pool_id
 
         if config.algorithm.algo_mode == "dora":
+            # use reference model if not already using
+            if Role.RefPolicy not in role_worker_mapping and Role.RefPolicy not in mapping:
+                role_worker_mapping[Role.RefPolicy] = ray.remote(ActorRolloutRefWorker)
+                mapping[Role.RefPolicy] = global_pool_id
+            # use nora model
             role_worker_mapping[Role.Nora] = ray.remote(ActorRolloutRefWorker)
             mapping[Role.Nora] = global_pool_id
 
