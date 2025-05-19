@@ -481,33 +481,56 @@ def compute_dora_loss(
     psi: torch.Tensor,
     response_mask: torch.Tensor,
     delta: float = 6.0,
+    mode: str = "contrastive",
 ):
 
-    with torch.no_grad():
-        log_ratio = ref_logprob - nora_logprob
+    assert mode in ["contrastive", "clipped-kl"]
 
-    deltas = -delta * torch.ones_like(log_ratio, device=log_ratio.device)
-    zeros = torch.zeros_like(log_ratio, device=log_ratio.device)
+    if mode == "clipped-kl":
+        with torch.no_grad():
+            log_ratio = ref_logprob - nora_logprob
 
-    clipped = torch.clamp(log_ratio, min=deltas, max=psi)
+        deltas = -delta * torch.ones_like(log_ratio, device=log_ratio.device)
+        zeros = torch.zeros_like(log_ratio, device=log_ratio.device)
 
-    clipped = torch.where(clipped == deltas, zeros, clipped)
-    clipped = torch.where(clipped == psi, zeros, clipped)
+        clipped = torch.clamp(log_ratio, min=deltas, max=psi)
 
-    obj_per_token = -clipped
-    loss = verl_F.masked_mean(obj_per_token, response_mask)
+        clipped = torch.where(clipped == deltas, zeros, clipped)
+        clipped = torch.where(clipped == psi, zeros, clipped)
 
-    stats = {
-        "actor/dora_loss": -loss.detach().item(),
-        "actor/clip_frac_low":  verl_F.masked_mean(
-            (log_ratio < -delta).float(), response_mask
-        ).detach().item(),
-        "actor/clip_frac_high": verl_F.masked_mean(
-            (log_ratio > psi).float(), response_mask
-        ).detach().item(),
-        "actor/mean_log_ratio": verl_F.masked_mean(log_ratio, response_mask).detach().item(),
-        "actor/mean_psi": verl_F.masked_mean(psi, response_mask).detach().item(),
-    }
+        obj_per_token = -clipped
+        loss = verl_F.masked_mean(obj_per_token, response_mask)
+
+        stats = {
+            "actor/dora_objective": -loss.detach().item(),
+            "actor/clip_frac_low":  verl_F.masked_mean(
+                (log_ratio < -delta).float(), response_mask
+            ).detach().item(),
+            "actor/clip_frac_high": verl_F.masked_mean(
+                (log_ratio > psi).float(), response_mask
+            ).detach().item(),
+            "actor/log_ratio_mean": verl_F.masked_mean(log_ratio, response_mask).detach().item(),
+            "actor/psi_mean": verl_F.masked_mean(psi, response_mask).detach().item(),
+        }
+    elif mode == "contrastive":
+        with torch.no_grad(): 
+            log_ratio = ref_logprob - nora_logprob
+        log_ratio += dora_logprob
+        
+        constrastive_loss = log_ratio * psi
+        loss_per_token = -contrastive_loss
+        loss = verl_F.masked_mean(loss_per_token, response_mask)
+
+        stats = {
+            "actor/dora_objective": contrastive_loss.detach().item(),
+            "actor/log_ratio_mean": verl_F.masked_mean(log_ratio, response_mask).detach().item(),
+            "actor/psi_mean": verl_F.masked_mean(psi, response_mask).detach().item(),
+            "actor/dora_log_prob_mean", verl_F.masked_mean(dora_log_prob, response_mask).detach().item(),
+            "actor/nora_log_prob_mean", verl_F.masked_mean(nora_log_prob, response_mask).detach().item(),
+            "actor/ref_log_prob_mean", verl_F.masked_mean(ref_log_prob, response_mask).detach().item(),
+        }
+    else:
+        raise ValueError(f"Invalid dora loss mode: {mode}")
     return loss, stats
 
     
