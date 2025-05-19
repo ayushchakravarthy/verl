@@ -517,17 +517,17 @@ def compute_dora_loss(
             log_ratio = ref_logprob - nora_logprob
         log_ratio += dora_logprob
         
-        constrastive_loss = log_ratio * psi
+        contrastive_loss = log_ratio * psi
         loss_per_token = -contrastive_loss
         loss = verl_F.masked_mean(loss_per_token, response_mask)
 
         stats = {
-            "actor/dora_objective": contrastive_loss.detach().item(),
+            "actor/dora_objective": verl_F.masked_mean(contrastive_loss, response_mask).detach().item(),
             "actor/log_ratio_mean": verl_F.masked_mean(log_ratio, response_mask).detach().item(),
             "actor/psi_mean": verl_F.masked_mean(psi, response_mask).detach().item(),
-            "actor/dora_log_prob_mean", verl_F.masked_mean(dora_log_prob, response_mask).detach().item(),
-            "actor/nora_log_prob_mean", verl_F.masked_mean(nora_log_prob, response_mask).detach().item(),
-            "actor/ref_log_prob_mean", verl_F.masked_mean(ref_log_prob, response_mask).detach().item(),
+            "actor/dora_log_prob_mean": verl_F.masked_mean(dora_logprob, response_mask).detach().item(),
+            "actor/nora_log_prob_mean": verl_F.masked_mean(nora_logprob, response_mask).detach().item(),
+            "actor/ref_log_prob_mean": verl_F.masked_mean(ref_logprob, response_mask).detach().item(),
         }
     else:
         raise ValueError(f"Invalid dora loss mode: {mode}")
