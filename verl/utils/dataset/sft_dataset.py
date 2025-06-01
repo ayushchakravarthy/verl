@@ -45,12 +45,13 @@ class SFTDataset(Dataset):
         response_dict_keys = config.get("response_dict_keys", None)
         max_length = config.get("max_length", 1024)
         truncation = config.get("truncation", "error")
+        use_shm = config.get('use_shm', False)
 
         assert truncation in ["error", "left", "right"]
         self.truncation = truncation
         print("Truncation method:", self.truncation)
-        self.apply_chat_template = apply_chat_template
-        print("Applying chat template:", self.apply_chat_template == True)
+        self.use_shm = use_shm
+
         if not isinstance(parquet_files, List):
             parquet_files = [parquet_files]
 
@@ -71,7 +72,7 @@ class SFTDataset(Dataset):
 
     def _download(self):
         for i, parquet_file in enumerate(self.parquet_files):
-            self.parquet_files[i] = copy_to_local(parquet_file, verbose=True)
+            self.parquet_files[i] = copy_to_local(parquet_file, verbose=True, use_shm=self.use_shm)
 
     def _read_files_and_tokenize(self):
         def series_to_item(ls):
@@ -98,8 +99,9 @@ class SFTDataset(Dataset):
             except Exception:
                 print(f"self.prompts={self.prompts}")
                 raise
-        self.prompts = self.prompts.to_numpy().tolist()
-        self.prompts = [x[0] for x in self.prompts]
+        if isinstance(self.prompts, pd.DataFrame):
+            self.prompts = self.prompts.squeeze()
+        self.prompts = self.prompts.tolist()
         self.responses = self.dataframe[self.response_key]
         for key in self.response_dict_keys:
             try:
@@ -107,8 +109,10 @@ class SFTDataset(Dataset):
             except Exception:
                 print(f"self.responses={self.responses}")
                 raise
-        self.responses = self.responses.to_numpy().tolist()
-        self.responses = [x[0] for x in self.responses]
+        if isinstance(self.responses, pd.DataFrame):
+            self.responses = self.responses.squeeze()
+        self.responses = self.responses.tolist()
+
     def __len__(self):
         return len(self.prompts)
 
@@ -119,6 +123,7 @@ class SFTDataset(Dataset):
 
         # apply chat template
         prompt_chat = [{"role": "user", "content": prompt}]
+        prompt_chat_str = tokenizer.apply_chat_template(prompt_chat, tokenize=False) if tokenizer.apply_chat_template else prompt
 
         # string
         response_chat_str = response + tokenizer.eos_token
